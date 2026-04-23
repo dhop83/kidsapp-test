@@ -2,7 +2,7 @@ import express from 'express';
 import { validate, activate, deactivate, enforceMiddleware } from './enforcement-client.js';
 
 const app  = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 // Your EMS entitlement ID — set in Railway env vars
 const ENTITLEMENT_ID = process.env.ENTITLEMENT_ID || 'aa58231b-92e9-450a-af9f-4bdc6e3...';
