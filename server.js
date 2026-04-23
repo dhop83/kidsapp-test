@@ -1,205 +1,98 @@
 import express from 'express';
-import { check, activate, deactivate, invalidate } from './enforcement.js';
-import { initRedis, cacheStats } from './cache.js';
-import { getCircuitState, activateWithEId } from './ems-client.js';
+import { validate, activate, deactivate, enforceMiddleware } from './enforcement-client.js';
 
 const app  = express();
 const PORT = process.env.PORT || 8080;
-const API_KEY = process.env.ENFORCEMENT_API_KEY;
+
+// Your EMS entitlement ID — set in Railway env vars
+const ENTITLEMENT_ID = process.env.ENTITLEMENT_ID || 'aa58231b-92e9-450a-af9f-4bdc6e3...';
 
 app.use(express.json());
+app.use(express.static('public'));
 
-// ─── Auth Middleware ──────────────────────────────────────────────────────────
+// ─── Unprotected ──────────────────────────────────────────────────────────────
 
-function requireApiKey(req, res, next) {
-  if (!API_KEY) return next(); // no key configured = open (dev mode)
-  const provided = req.headers['x-enforcement-key'] || req.headers['authorization']?.replace('Bearer ', '');
-  if (provided !== API_KEY) {
-    return res.status(401).json({ error: 'invalid_api_key' });
-  }
-  next();
-}
-
-// ─── Health ───────────────────────────────────────────────────────────────────
-
-app.get('/', async (req, res) => {
-  const stats = await cacheStats();
-  const circuit = getCircuitState();
-  res.json({
-    status: 'ok',
-    service: 'sentinel-enforcement-service',
-    failMode: process.env.ENFORCEMENT_FAIL_MODE || 'open',
-    cache: stats,
-    circuit: {
-      state: circuit.state,
-      failures: circuit.failures,
-    },
-    timestamp: new Date().toISOString(),
-  });
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', entitlementId: ENTITLEMENT_ID });
 });
 
-// ─── POST /validate ───────────────────────────────────────────────────────────
-// Check entitlement validity + feature access + qty
-// Does NOT consume a token
+// ─── Protected Routes (feature-level enforcement) ─────────────────────────────
 
-app.post('/validate', requireApiKey, async (req, res) => {
-  const { entitlementId, feature } = req.body;
-
-  if (!entitlementId) {
-    return res.status(400).json({ error: 'entitlementId is required' });
-  }
-
-  try {
-    const result = await check(entitlementId, feature);
-    const statusCode = result.valid ? 200 : 403;
-    return res.status(statusCode).json(result);
-  } catch (err) {
-    console.error('[validate] Error:', err.message);
-    return res.status(500).json({ error: 'internal_error', detail: err.message });
-  }
-});
-
-// ─── POST /activate ───────────────────────────────────────────────────────────
-// Validate + consume 1 token from the entitlement pool
-
-app.post('/activate', requireApiKey, async (req, res) => {
-  const { entitlementId, feature, userId } = req.body;
-
-  if (!entitlementId || !userId) {
-    return res.status(400).json({ error: 'entitlementId and userId are required' });
-  }
-
-  try {
-    const result = await activate(entitlementId, feature, userId);
-    const statusCode = result.success ? 200 : 403;
-    return res.status(statusCode).json(result);
-  } catch (err) {
-    console.error('[activate] Error:', err.message);
-    return res.status(500).json({ error: 'internal_error', detail: err.message });
-  }
-});
-
-// ─── POST /deactivate ─────────────────────────────────────────────────────────
-// Return token to pool
-
-app.post('/deactivate', requireApiKey, async (req, res) => {
-  const { entitlementId, activationId } = req.body;
-
-  if (!entitlementId || !activationId) {
-    return res.status(400).json({ error: 'entitlementId and activationId are required' });
-  }
-
-  try {
-    const result = await deactivate(entitlementId, activationId);
-    return res.status(result.success ? 200 : 500).json(result);
-  } catch (err) {
-    return res.status(500).json({ error: 'internal_error', detail: err.message });
-  }
-});
-
-// ─── POST /webhook/ems ────────────────────────────────────────────────────────
-// EMS pushes state changes here → instant cache invalidation
-
-app.post('/webhook/ems', async (req, res) => {
-  res.status(200).json({ received: true }); // acknowledge fast
-
-  const { entityId, activityName, currentState } = req.body;
-  console.log(`[webhook] ${activityName} — entity: ${entityId}`);
-
-  const INVALIDATING_EVENTS = [
-    'ENTITLEMENT_DISABLED',
-    'ENTITLEMENT_SUSPENDED',
-    'ENTITLEMENT_ENABLED',
-    'ENTITLEMENT_EXPIRED',
-    'ENTITLEMENT_UPDATED',
-    'ACTIVATION_CREATED',
-    'ACTIVATION_REVOKED',
-    'ACTIVATION_UPDATED',
-  ];
-
-  // Try to get entitlement ID from currentState or entityId
-  let entitlementId = entityId;
-  try {
-    const state = JSON.parse(currentState || '{}');
-    entitlementId = state?.entitlement?.id || state?.activation?.entitlement?.id || entityId;
-  } catch { /* use entityId */ }
-
-  if (INVALIDATING_EVENTS.includes(activityName) && entitlementId) {
-    await invalidate(entitlementId);
-    console.log(`[webhook] Cache invalidated for entitlement: ${entitlementId}`);
-  }
-});
-
-// ─── GET /cache/invalidate/:entitlementId ─────────────────────────────────────
-// Manual cache invalidation for testing
-
-app.delete('/cache/:entitlementId', requireApiKey, async (req, res) => {
-  await invalidate(req.params.entitlementId);
-  res.json({ invalidated: req.params.entitlementId });
-});
-
-// ─── GET /debug/ems ───────────────────────────────────────────────────────────
-// Tests raw EMS connectivity and auth — remove in production
-
-app.get('/debug/ems', async (req, res) => {
-  try {
-    const url = `${process.env.SENTINEL_EMS_URL}/ems/api/v5/entitlements?limit=1`;
-    const auth = 'Basic ' + Buffer.from(
-      `${process.env.SENTINEL_EMS_USERNAME}:${process.env.SENTINEL_EMS_PASSWORD}`
-    ).toString('base64');
-
-    const emsRes = await fetch(url, {
-      headers: { Authorization: auth, Accept: 'application/json' },
-      signal: AbortSignal.timeout(5000),
-    });
-
-    const body = await emsRes.text();
+// MindBloom feature — uses middleware (validate only, no token consumption)
+app.get(
+  '/api/mindbloom',
+  enforceMiddleware(ENTITLEMENT_ID, 'MindBloom'),
+  (req, res) => {
     res.json({
-      status: emsRes.status,
-      ok: emsRes.ok,
-      url,
-      authHeader: auth.substring(0, 20) + '...',
-      body: body.substring(0, 500),
+      feature: 'MindBloom',
+      data: { message: 'Welcome to MindBloom! 🌱', content: 'Mindfulness content here...' },
+      entitlement: req.entitlement,
     });
-  } catch (err) {
-    res.json({ error: err.message });
   }
-});
+);
 
-
-
-
-// ─── GET /debug/activate ──────────────────────────────────────────────────────
-app.get('/debug/activate', async (req, res) => {
-  const uid = req.query.uid || '0e9072f2-5d12-4360-a6ac-ba6d90327073';
-  const auth = 'Basic ' + Buffer.from(
-    `${process.env.SENTINEL_EMS_USERNAME}:${process.env.SENTINEL_EMS_PASSWORD}`
-  ).toString('base64');
-  const body = { activations: { activation: [{ quantity: 1 }] } };
-  const url = `${process.env.SENTINEL_EMS_URL}/ems/api/v5/entitlements/${uid}/activations`;
-  console.log(`[debug] POST ${url} body=${JSON.stringify(body)}`);
-  try {
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: auth, Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(10000),
+// ChoreChampion feature — uses middleware (validate only, no token consumption)
+app.get(
+  '/api/chorechampion',
+  enforceMiddleware(ENTITLEMENT_ID, 'ChoreChampion'),
+  (req, res) => {
+    res.json({
+      feature: 'ChoreChampion',
+      data: { message: 'ChoreChampion activated! 🏆', tasks: ['Clean room', 'Do dishes'] },
+      entitlement: req.entitlement,
     });
-    const text = await r.text();
-    res.json({ url, status: r.status, ok: r.ok, response: text.substring(0, 800) });
-  } catch (err) {
-    res.json({ url, error: err.message });
   }
-});
+);
 
-async function boot() {
-  await initRedis();
-  app.listen(PORT, () => {
-    console.log(`[enforcement] Service running on port ${PORT}`);
-    console.log(`[enforcement] Fail mode: ${process.env.ENFORCEMENT_FAIL_MODE || 'open'}`);
-    console.log(`[enforcement] EMS tenant: ${process.env.SENTINEL_EMS_URL}`);
-    console.log(`[enforcement] API key: ${API_KEY ? 'set' : 'NOT SET (open dev mode)'}`);
+// ─── Session: Activate (consume token) ───────────────────────────────────────
+
+app.post('/session/start', async (req, res) => {
+  const { userId, feature } = req.body;
+
+  if (!userId) return res.status(400).json({ error: 'userId is required' });
+
+  const result = await activate(ENTITLEMENT_ID, feature || 'MindBloom', userId);
+
+  if (!result.success) {
+    return res.status(403).json({
+      error: 'session_denied',
+      reason: result.reason,
+      detail: result.detail,
+    });
+  }
+
+  // In production: store activationId in session/JWT
+  res.json({
+    sessionStarted: true,
+    userId,
+    activationId: result.activationId,
+    feature: result.feature,
+    customer: result.customer,
+    latencyMs: result.latencyMs,
   });
-}
+});
 
-boot();
+// ─── Session: Deactivate (return token) ──────────────────────────────────────
+
+app.post('/session/end', async (req, res) => {
+  const { activationId } = req.body;
+
+  if (!activationId) return res.status(400).json({ error: 'activationId is required' });
+
+  const result = await deactivate(ENTITLEMENT_ID, activationId);
+  res.json({ sessionEnded: result.success, activationId });
+});
+
+// ─── Debug: Raw validate ──────────────────────────────────────────────────────
+
+app.get('/debug/validate', async (req, res) => {
+  const { feature } = req.query;
+  const result = await validate(ENTITLEMENT_ID, feature);
+  res.json(result);
+});
+
+app.listen(PORT, () => {
+  console.log(`[test-app] Running on port ${PORT}`);
+  console.log(`[test-app] Entitlement: ${ENTITLEMENT_ID}`);
+  console.log(`[test-app] Enforcement: ${process.env.ENFORCEMENT_SERVICE_URL}`);
+});
