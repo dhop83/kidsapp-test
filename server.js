@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 8080;
 const ENTITLEMENT_ID = process.env.ENTITLEMENT_ID || 'aa58231b-92e9-450a-af9f-4bdc6e3...';
 
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.static('.'));
 
 // ─── Unprotected ──────────────────────────────────────────────────────────────
 
