@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KidsApp — Enforcement Testbed</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --border: #1e1e2e;
+    --accent-green: #00ff88;
+    --accent-red: #ff3860;
+    --accent-amber: #ffb830;
+    --accent-blue: #4f8ef7;
+    --text: #e8e8f0;
+    --muted: #5a5a7a;
+    --font-head: 'Syne', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-head);
+    min-height: 100vh;
+    padding: 2rem;
+    background-image:
+      radial-gradient(ellipse at 20% 0%, rgba(0,255,136,0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 100%, rgba(79,142,247,0.06) 0%, transparent 50%);
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-size: 1.4rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+  }
+
+  .logo span { color: var(--accent-green); }
+
+  .eid-badge {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+  }
+
+  /* ── Status Bar ── */
+  .status-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.2rem 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent-color, var(--accent-blue));
+  }
+
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.5rem;
+  }
+
+  .stat-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--accent-color, var(--text));
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat-sub {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-top: 0.3rem;
+  }
+
+  /* ── Main Grid ── */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.8rem;
+  }
+
+  .panel-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 1.5rem;
+  }
+
+  /* ── Feature Cards ── */
+  .feature-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.2rem;
+    margin-bottom: 1rem;
+    transition: border-color 0.2s;
+    cursor: default;
+  }
+
+  .feature-card:last-child { margin-bottom: 0; }
+
+  .feature-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+
+  .feature-name {
+    font-size: 1rem;
+    font-weight: 700;
+  }
+
+  .feature-icon { font-size: 1.4rem; }
+
+  .pill {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 500;
+    padding: 0.25rem 0.6rem;
+    border-radius: 100px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .pill-green  { background: rgba(0,255,136,0.12); color: var(--accent-green); border: 1px solid rgba(0,255,136,0.25); }
+  .pill-red    { background: rgba(255,56,96,0.12);  color: var(--accent-red);   border: 1px solid rgba(255,56,96,0.25); }
+  .pill-amber  { background: rgba(255,184,48,0.12); color: var(--accent-amber); border: 1px solid rgba(255,184,48,0.25); }
+  .pill-muted  { background: rgba(90,90,122,0.15);  color: var(--muted);        border: 1px solid rgba(90,90,122,0.2); }
+
+  .qty-bar-wrap {
+    background: var(--border);
+    border-radius: 4px;
+    height: 6px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+  }
+
+  .qty-bar {
+    height: 100%;
+    border-radius: 4px;
+    background: var(--accent-green);
+    transition: width 0.5s ease;
+  }
+
+  .qty-bar.warn { background: var(--accent-amber); }
+  .qty-bar.empty { background: var(--accent-red); }
+
+  .qty-label {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.2rem;
+    border-radius: 8px;
+    font-family: var(--font-head);
+    font-size: 0.8rem;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-primary {
+    background: var(--accent-green);
+    color: #000;
+  }
+  .btn-primary:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+
+  .btn-danger {
+    background: var(--accent-red);
+    color: #fff;
+  }
+  .btn-danger:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--muted); }
+
+  .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.7rem; }
+
+  /* ── Session Panel ── */
+  .input-row {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .input-group { display: flex; flex-direction: column; gap: 0.3rem; flex: 1; min-width: 140px; }
+
+  label {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  input, select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.55rem 0.8rem;
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  input:focus, select:focus { border-color: var(--accent-green); }
+
+  /* ── Log ── */
+  .log-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.8rem;
+  }
+
+  .log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.2rem;
+  }
+
+  .log-entries {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+
+  .log-entry {
+    display: grid;
+    grid-template-columns: 80px 70px 1fr auto;
+    gap: 1rem;
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+    animation: fadeIn 0.2s ease;
+  }
+
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+  .log-entry:last-child { border-bottom: none; }
+  .log-time { color: var(--muted); }
+  .log-latency { color: var(--accent-blue); text-align: right; }
+  .log-detail { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── Active Sessions ── */
+  .session-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.7rem 0;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+  }
+  .session-item:last-child { border-bottom: none; }
+  .session-user { color: var(--accent-green); font-weight: 500; }
+  .session-feature { color: var(--muted); }
+
+  .empty-state {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-align: center;
+    padding: 1.5rem 0;
+  }
+
+  /* ── Spinner ── */
+  .spin {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Kids<span>App</span> <span style="color:var(--muted);font-weight:400;font-size:0.9rem">enforcement testbed</span></div>
+  <div class="eid-badge" id="eid-display">loading entitlement...</div>
+</header>
+
+<!-- Status Bar -->
+<div class="status-bar">
+  <div class="stat-card" style="--accent-color: var(--accent-green)">
+    <div class="stat-label">Entitlement</div>
+    <div class="stat-value" id="stat-state">—</div>
+    <div class="stat-sub" id="stat-customer">—</div>
+  </div>
+  <div class="stat-card" style="--accent-color: var(--accent-amber)">
+    <div class="stat-label">Tokens Available</div>
+    <div class="stat-value" id="stat-qty">—</div>
+    <div class="stat-sub" id="stat-qty-sub">across all features</div>
+  </div>
+  <div class="stat-card" style="--accent-color: var(--accent-blue)">
+    <div class="stat-label">Cache</div>
+    <div class="stat-value" id="stat-cache">—</div>
+    <div class="stat-sub" id="stat-cache-sub">—</div>
+  </div>
+  <div class="stat-card" style="--accent-color: var(--accent-red)">
+    <div class="stat-label">Circuit Breaker</div>
+    <div class="stat-value" id="stat-circuit">—</div>
+    <div class="stat-sub" id="stat-circuit-sub">EMS health</div>
+  </div>
+</div>
+
+<!-- Main Grid -->
+<div class="grid">
+
+  <!-- Features -->
+  <div class="panel">
+    <div class="panel-title">Features</div>
+
+    <div class="feature-card" id="card-mindbloom">
+      <div class="feature-header">
+        <div>
+          <div class="feature-icon">🌱</div>
+          <div class="feature-name">MindBloom</div>
+        </div>
+        <span class="pill pill-muted" id="pill-mindbloom">checking...</span>
+      </div>
+      <div class="qty-bar-wrap"><div class="qty-bar" id="bar-mindbloom" style="width:0%"></div></div>
+      <div class="qty-label">
+        <span id="qty-mindbloom-used">—</span>
+        <span id="qty-mindbloom-total">—</span>
+      </div>
+      <div style="margin-top:1rem;display:flex;gap:0.5rem">
+        <button class="btn btn-ghost btn-sm" onclick="testValidate('MindBloom')">Validate</button>
+        <button class="btn btn-primary btn-sm" onclick="testAccess('/api/mindbloom')">Test Access</button>
+      </div>
+    </div>
+
+    <div class="feature-card" id="card-chorechampion">
+      <div class="feature-header">
+        <div>
+          <div class="feature-icon">🏆</div>
+          <div class="feature-name">ChoreChampion</div>
+        </div>
+        <span class="pill pill-muted" id="pill-chorechampion">checking...</span>
+      </div>
+      <div class="qty-bar-wrap"><div class="qty-bar" id="bar-chorechampion" style="width:0%"></div></div>
+      <div class="qty-label">
+        <span id="qty-chorechampion-used">—</span>
+        <span id="qty-chorechampion-total">—</span>
+      </div>
+      <div style="margin-top:1rem;display:flex;gap:0.5rem">
+        <button class="btn btn-ghost btn-sm" onclick="testValidate('ChoreChampion')">Validate</button>
+        <button class="btn btn-primary btn-sm" onclick="testAccess('/api/chorechampion')">Test Access</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Session Control -->
+  <div class="panel">
+    <div class="panel-title">Session Control (Token Consumption)</div>
+
+    <div class="input-row">
+      <div class="input-group">
+        <label>User ID</label>
+        <input type="text" id="input-userid" placeholder="user-001" value="user-001">
+      </div>
+      <div class="input-group">
+        <label>Feature</label>
+        <select id="input-feature">
+          <option value="MindBloom">MindBloom</option>
+          <option value="ChoreChampion">ChoreChampion</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:0.75rem;margin-bottom:1.5rem">
+      <button class="btn btn-primary" id="btn-activate" onclick="startSession()">
+        ▶ Start Session
+      </button>
+      <button class="btn btn-ghost" onclick="refreshStatus()">↻ Refresh</button>
+    </div>
+
+    <div class="panel-title">Active Sessions</div>
+    <div id="sessions-list">
+      <div class="empty-state">No active sessions</div>
+    </div>
+  </div>
+</div>
+
+<!-- Log -->
+<div class="log-panel">
+  <div class="log-header">
+    <div class="panel-title" style="margin:0">Request Log</div>
+    <button class="btn btn-ghost btn-sm" onclick="clearLog()">Clear</button>
+  </div>
+  <div class="log-entries" id="log"></div>
+</div>
+
+<script>
+  const sessions = {}; // activationId → { userId, feature, startedAt }
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
+  function ts() {
+    return new Date().toLocaleTimeString('en-US', { hour12: false });
+  }
+
+  function addLog(type, operation, detail, latency) {
+    const log = document.getElementById('log');
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+
+    const pillClass = type === 'ALLOW' ? 'pill-green' : type === 'DENY' ? 'pill-red' : 'pill-amber';
+
+    entry.innerHTML = `
+      <span class="log-time">${ts()}</span>
+      <span class="pill ${pillClass}">${type}</span>
+      <span class="log-detail">${operation} — ${detail}</span>
+      <span class="log-latency">${latency ? latency + 'ms' : '—'}</span>
+    `;
+    log.prepend(entry);
+    if (log.children.length > 50) log.lastChild.remove();
+  }
+
+  function clearLog() {
+    document.getElementById('log').innerHTML = '';
+  }
+
+  // ── Status Refresh ───────────────────────────────────────────────────────────
+
+  async function refreshStatus() {
+    try {
+      // Enforcement service health
+      const svc = await fetch('/debug/validate?feature=MindBloom').then(r => r.json());
+
+      document.getElementById('stat-state').textContent =
+        svc.valid ? 'ACTIVE' : (svc.reason || 'INVALID');
+      document.getElementById('stat-state').style.color =
+        svc.valid ? 'var(--accent-green)' : 'var(--accent-red)';
+      document.getElementById('stat-customer').textContent = svc.customer || '—';
+
+      // Update MindBloom qty
+      updateFeatureCard('mindbloom', svc);
+
+      // ChoreChampion
+      const cc = await fetch('/debug/validate?feature=ChoreChampion').then(r => r.json());
+      updateFeatureCard('chorechampion', cc);
+
+      // Total qty
+      const mb = svc.availableQuantity ?? 0;
+      const ccc = cc.availableQuantity ?? 0;
+      document.getElementById('stat-qty').textContent = mb + ccc;
+
+      // Cache + circuit from enforcement health
+      const health = await fetch(
+        (window.__ENFORCEMENT_URL__ || '') + '/'
+      ).then(r => r.json()).catch(() => null);
+
+      if (health) {
+        document.getElementById('stat-cache').textContent = health.cache?.type?.toUpperCase() || '—';
+        document.getElementById('stat-cache-sub').textContent = `${health.cache?.size || 0} entries cached`;
+        document.getElementById('stat-circuit').textContent = health.circuit?.state || '—';
+        document.getElementById('stat-circuit-sub').textContent =
+          `${health.circuit?.failures || 0} failures`;
+        document.getElementById('stat-circuit').style.color =
+          health.circuit?.state === 'CLOSED' ? 'var(--accent-green)' :
+          health.circuit?.state === 'OPEN'   ? 'var(--accent-red)' : 'var(--accent-amber)';
+      }
+
+      // EID
+      const h = await fetch('/health').then(r => r.json());
+      document.getElementById('eid-display').textContent =
+        (h.entitlementId || '').substring(0, 24) + '...';
+
+    } catch (err) {
+      console.error('Status refresh failed:', err);
+    }
+  }
+
+  function updateFeatureCard(key, result) {
+    const pill = document.getElementById(`pill-${key}`);
+    const bar  = document.getElementById(`bar-${key}`);
+    const used = document.getElementById(`qty-${key}-used`);
+    const total = document.getElementById(`qty-${key}-total`);
+
+    if (result.valid) {
+      pill.className = 'pill pill-green';
+      pill.textContent = 'entitled';
+    } else if (result.reason === 'quota_exceeded') {
+      pill.className = 'pill pill-red';
+      pill.textContent = 'quota exceeded';
+    } else {
+      pill.className = 'pill pill-red';
+      pill.textContent = result.reason || 'denied';
+    }
+
+    const avail = result.availableQuantity ?? 0;
+    const tot   = result.totalQuantity ?? 0;
+    const pct   = tot > 0 ? (avail / tot) * 100 : 0;
+
+    bar.style.width = pct + '%';
+    bar.className = 'qty-bar' + (pct < 20 ? ' empty' : pct < 50 ? ' warn' : '');
+
+    used.textContent = `${avail} available`;
+    total.textContent = `${result.activatedQuantity ?? 0} / ${tot} used`;
+  }
+
+  // ── Validate ─────────────────────────────────────────────────────────────────
+
+  async function testValidate(feature) {
+    const t = Date.now();
+    const res = await fetch(`/debug/validate?feature=${feature}`).then(r => r.json());
+    const latency = Date.now() - t;
+    const type = res.valid ? 'ALLOW' : 'DENY';
+    addLog(type, `VALIDATE ${feature}`, res.reason + (res.stale ? ' (stale cache)' : ''), res.latencyMs || latency);
+    refreshStatus();
+  }
+
+  async function testAccess(path) {
+    const t = Date.now();
+    const res = await fetch(path);
+    const data = await res.json();
+    const latency = Date.now() - t;
+    const type = res.ok ? 'ALLOW' : 'DENY';
+    const feature = path.includes('mindbloom') ? 'MindBloom' : 'ChoreChampion';
+    addLog(type, `GET ${path}`, res.ok ? 'access granted' : (data.reason || 'denied'), latency);
+  }
+
+  // ── Session ───────────────────────────────────────────────────────────────────
+
+  async function startSession() {
+    const userId  = document.getElementById('input-userid').value.trim() || 'user-001';
+    const feature = document.getElementById('input-feature').value;
+    const btn = document.getElementById('btn-activate');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin"></span> Activating...';
+
+    try {
+      const res = await fetch('/session/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, feature }),
+      }).then(r => r.json());
+
+      if (res.sessionStarted) {
+        sessions[res.activationId] = { userId, feature, startedAt: new Date() };
+        addLog('ALLOW', `ACTIVATE ${feature}`, `user: ${userId} | activation: ${res.activationId?.substring(0,8)}...`, res.latencyMs);
+        renderSessions();
+        refreshStatus();
+      } else {
+        addLog('DENY', `ACTIVATE ${feature}`, `user: ${userId} | ${res.reason}: ${res.detail || ''}`, res.latencyMs);
+      }
+    } catch (err) {
+      addLog('DENY', 'ACTIVATE', err.message, null);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '▶ Start Session';
+    }
+  }
+
+  async function endSession(activationId) {
+    const session = sessions[activationId];
+    const res = await fetch('/session/end', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ activationId }),
+    }).then(r => r.json());
+
+    if (res.sessionEnded) {
+      addLog('ALLOW', `DEACTIVATE ${session?.feature || ''}`, `user: ${session?.userId} | token returned`, null);
+      delete sessions[activationId];
+      renderSessions();
+      refreshStatus();
+    }
+  }
+
+  function renderSessions() {
+    const list = document.getElementById('sessions-list');
+    const keys = Object.keys(sessions);
+
+    if (keys.length === 0) {
+      list.innerHTML = '<div class="empty-state">No active sessions</div>';
+      return;
+    }
+
+    list.innerHTML = keys.map(id => {
+      const s = sessions[id];
+      const age = Math.round((Date.now() - s.startedAt) / 1000);
+      return `
+        <div class="session-item">
+          <div>
+            <span class="session-user">${s.userId}</span>
+            <span class="session-feature"> — ${s.feature}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:0.75rem">
+            <span style="font-family:var(--font-mono);font-size:0.65rem;color:var(--muted)">${age}s ago</span>
+            <button class="btn btn-danger btn-sm" onclick="endSession('${id}')">End</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ── Boot ──────────────────────────────────────────────────────────────────────
+
+  refreshStatus();
+  setInterval(refreshStatus, 30000);
+  setInterval(() => {
+    Object.keys(sessions).forEach(id => {
+      const el = document.querySelector(`[data-id="${id}"] .session-age`);
+      if (el) el.textContent = Math.round((Date.now() - sessions[id].startedAt) / 1000) + 's';
+    });
+  }, 5000);
+</script>
+</body>
+</html>
