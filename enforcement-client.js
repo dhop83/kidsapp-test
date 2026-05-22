@@ -14,7 +14,7 @@ function headers() {
 
 // ─── L1 in-process cache (validate only) ─────────────────────────────────────
 const L1 = new Map();
-const L1_TTL = 5000; // ms — tune down if you need faster invalidation propagation
+const L1_TTL = 30000; // ms — tune down if you need faster invalidation propagation
 
 async function post(path, body) {
   if (path === '/validate') {
