@@ -1,7 +1,6 @@
 // enforcement-client.js
 // Drop this file into any Node.js app.
 // Reads ENFORCEMENT_SERVICE_URL and ENFORCEMENT_API_KEY from env.
-
 const SERVICE_URL = process.env.ENFORCEMENT_SERVICE_URL;
 const API_KEY     = process.env.ENFORCEMENT_API_KEY;
 const TIMEOUT_MS  = parseInt(process.env.ENFORCEMENT_TIMEOUT_MS || '3000');
@@ -13,16 +12,30 @@ function headers() {
   };
 }
 
-async function post(path, body) {
-  if (!SERVICE_URL) throw new Error('ENFORCEMENT_SERVICE_URL is not set');
+// ─── L1 in-process cache (validate only) ─────────────────────────────────────
+const L1 = new Map();
+const L1_TTL = 5000; // ms — tune down if you need faster invalidation propagation
 
+async function post(path, body) {
+  if (path === '/validate') {
+    const key = `${body.entitlementId}:${body.feature ?? ''}`;
+    const hit = L1.get(key);
+    if (hit && Date.now() - hit.ts < L1_TTL) return hit.value;
+    const result = await postRaw(path, body);
+    L1.set(key, { value: result, ts: Date.now() });
+    return result;
+  }
+  return postRaw(path, body);
+}
+
+async function postRaw(path, body) {
+  if (!SERVICE_URL) throw new Error('ENFORCEMENT_SERVICE_URL is not set');
   const res = await fetch(`${SERVICE_URL}${path}`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
-
   return res.json();
 }
 
@@ -31,7 +44,6 @@ async function post(path, body) {
 // Does NOT consume a token
 //
 // Returns: { valid: bool, reason: string, availableQuantity, latencyMs, ... }
-
 export async function validate(entitlementId, feature) {
   return post('/validate', { entitlementId, feature });
 }
@@ -41,7 +53,6 @@ export async function validate(entitlementId, feature) {
 // Call this when a user starts a session / uses a feature
 //
 // Returns: { success: bool, activationId, latencyMs, ... }
-
 export async function activate(entitlementId, feature, userId) {
   return post('/activate', { entitlementId, feature, userId });
 }
@@ -51,7 +62,6 @@ export async function activate(entitlementId, feature, userId) {
 // Call this on logout or session end
 //
 // Returns: { success: bool }
-
 export async function deactivate(entitlementId, activationId) {
   return post('/deactivate', { entitlementId, activationId });
 }
@@ -60,12 +70,10 @@ export async function deactivate(entitlementId, activationId) {
 // Usage:
 //   import { enforceMiddleware } from './enforcement-client.js'
 //   app.use('/api/mindbloom', enforceMiddleware(ENTITLEMENT_ID, 'MindBloom'))
-
 export function enforceMiddleware(entitlementId, feature) {
   return async (req, res, next) => {
     try {
       const result = await validate(entitlementId, feature);
-
       if (!result.valid) {
         return res.status(403).json({
           error: 'access_denied',
@@ -77,7 +85,6 @@ export function enforceMiddleware(entitlementId, feature) {
           }),
         });
       }
-
       // Attach to request for downstream use
       req.entitlement = result;
       next();
